@@ -19,9 +19,9 @@ const upload = multer({ storage: storage });
 // Configuración de la base de datos
 const db = mysql.createConnection({
   host: '127.0.0.1',
-  user: 'dbz',
-  password: 'goku',
-  database: 'dbz'
+  user: 'users',
+  password: 'users',
+  database: 'users'
 });
 
 db.connect(err => {
@@ -46,30 +46,44 @@ app.get('/api/persons', (req, res) => {
 
 // Crear un nuevo personaje con imagen
 app.post('/api/persons', upload.single('imagen'), (req, res) => {
-  const { nombre, poder, funcion } = req.body;
+  const { nombre, usuario, contrasenia } = req.body;
+  const administrador = false
   const imagen = req.file ? req.file.buffer : null;
 
-  db.query('INSERT INTO People (nombre, poder, imagenUrl, funcion) VALUES (?, ?, ?, ?)', [nombre, poder, imagen, funcion], (err, results) => {
+  db.query('INSERT INTO People (nombre, usuario, imagenUrl, contrasenia, administrador) VALUES (?, ?, ?, ?, ?)', [nombre, usuario, imagen, contrasenia, administrador], (err, results) => {
     if (err) {
       console.log('Error al insertar:', err);
       return res.status(500).json({ error: err.message });
     }
-    res.status(201).json({ id: results.insertId, nombre, poder, funcion });
+    res.status(201).json({ id: results.insertId, nombre, usuario, contrasenia });
   });
 });
 
 // Actualizar un personaje
 app.put('/api/persons/:id', upload.single('imagen'), (req, res) => {
   const id = req.params.id;
-  const { nombre, poder, funcion } = req.body;
-  const imagen = req.file ? req.file.buffer : null;
+  const { nombre, usuario, contrasenia, administrador } = req.body;
 
-  const query = 'UPDATE People SET nombre = ?, poder = ?, imagenUrl = ?, funcion = ? WHERE id = ?';
-  db.query(query, [nombre, poder, imagen, funcion, id], (err, results) => {
+  const query = 'UPDATE People SET nombre = ?, usuario = ?, contrasenia = ? , administrador = ? WHERE id = ?';
+  db.query(query, [nombre, usuario, contrasenia, administrador, id], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
-    res.json({ id, nombre, poder, funcion });
+    res.json({ id, nombre, usuario, contrasenia, administrador });
+  });
+});
+
+// Actualizar la imagen de un personaje
+app.put('/api/persons/image/:id', upload.single('imagen'), (req, res) => {
+  const id = req.params.id;
+  const imagen = req.file ? req.file.buffer : null;
+
+  const query = 'UPDATE People SET imagenUrl = ? WHERE id = ?';
+  db.query(query, [imagen, id], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ id});
   });
 });
 
