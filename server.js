@@ -1,17 +1,14 @@
 const express = require('express');
 const mysql = require('mysql2');
+require('dotenv').config();
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const multer = require('multer');
 const encryptC = require('bcrypt');
 const jwt = require('jsonwebtoken');
-require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000; // Cambia a PORT en Railway
-
-// Reemplaza 'your_secret_key' con una clave secreta fuerte
-const SECRET_KEY = 'LLAVE_SECRETA_USUARIOS';
 
 // Configuración de middleware
 app.use(cors());
@@ -22,7 +19,7 @@ const storage = multer.memoryStorage(); // Guarda archivos en memoria
 const upload = multer({ storage: storage });
 
 // Configuración de la base de datos
-const db = mysql.createConnection(process.env.MYSQL_URL); // Usar la variable de entorno
+const db = mysql.createConnection(process.env.MYSQL_PUBLIC_URL);
 
 db.connect(err => {
   if (err) {
@@ -30,7 +27,18 @@ db.connect(err => {
     return;
   }
   console.log('Conectado a la base de datos MySQL');
-}); 
+});
+
+// Ejemplo de ruta
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK' });
+});
+
+// Iniciar el servidor
+app.listen(port, () => {
+  console.log(`Servidor corriendo en http://localhost:${port}`);
+});
+
 
 // Rutas CRUD
 
@@ -192,12 +200,6 @@ app.delete('/api/persons/:id', (req, res) => {
     res.status(204).end();
   });
 });
-
-// Iniciar el servidor
-app.listen(port, () => {
-  console.log(`Servidor escuchando en http://localhost:${port}`);
-});
-
 
 // Servir una imagen específica por ID
 app.get('/api/persons/image/:id', (req, res) => {
