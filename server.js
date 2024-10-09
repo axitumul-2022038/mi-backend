@@ -4,12 +4,13 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const multer = require('multer');
 const encryptC = require('bcrypt');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
 const app = express();
-const port = 3000;
-const jwt = require('jsonwebtoken');
+const port = process.env.PORT || 3000; // Cambia a PORT en Railway
 
-// Replace 'your_secret_key' with a strong secret key
+// Reemplaza 'your_secret_key' con una clave secreta fuerte
 const SECRET_KEY = 'LLAVE_SECRETA_USUARIOS';
 
 // Configuración de middleware
@@ -21,12 +22,7 @@ const storage = multer.memoryStorage(); // Guarda archivos en memoria
 const upload = multer({ storage: storage });
 
 // Configuración de la base de datos
-const db = mysql.createConnection({
-  host: '127.0.0.1',
-  user: 'users',
-  password: 'users',
-  database: 'users'
-});
+const db = mysql.createConnection(process.env.MYSQL_URL); // Usar la variable de entorno
 
 db.connect(err => {
   if (err) {
@@ -34,7 +30,7 @@ db.connect(err => {
     return;
   }
   console.log('Conectado a la base de datos MySQL');
-});
+}); 
 
 // Rutas CRUD
 
