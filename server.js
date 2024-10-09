@@ -48,6 +48,20 @@ app.get('/api/persons', (req, res) => {
   });
 });
 
+// Obtener solo un personaje
+app.get('/api/persons/:id', (req, res) => {
+  const id = req.params.id; // Faltaba obtener el id del req.params
+  db.query('SELECT * FROM People WHERE id = ?', [id], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Personaje no encontrado' });
+    }
+    res.json(results[0]); // Enviar solo el primer resultado
+  });
+});
+
 // Crear un nuevo personaje con imagen
 app.post('/api/persons', upload.single('imagen'), (req, res) => {
   const { nombre, usuario, contrasenia } = req.body;
@@ -209,6 +223,52 @@ app.get('/api/persons/image/:id', (req, res) => {
   });
 });
 
+// Servir una imagen específica en base64
+app.get('/api/persons/image64/:id', (req, res) => {
+  const id = req.params.id;
+  db.query('SELECT imagenUrl FROM People WHERE id = ?', [id], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Personaje no encontrado' });
+    }
+    const imagen = results[0].imagenUrl; // Aquí se obtiene el BLOB
+    if (imagen) {
+      // Convierte el buffer en base64
+      const imagenBase64 = Buffer.from(imagen).toString('base64');
+      res.json({ imagenUrl: imagenBase64 });
+    } else {
+      res.status(404).json({ error: 'Imagen no disponible' });
+    }
+  });
+});
+
+//Servir todas las imagene específicas en base64
+app.get('/api/persons/image64', (req, res) => {
+  db.query('SELECT imagenUrl FROM People', (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (results.length > 0) {
+      // Mapear sobre los resultados para convertir cada imagen en base64
+      const imagenesBase64 = results.map((row) => {
+        const imagen = row.imagenUrl;
+        return imagen ? Buffer.from(imagen).toString('base64') : null;
+      });
+
+      res.json({ imagenes: imagenesBase64 });
+    } else {
+      res.status(404).json({ error: 'No hay imágenes disponibles' });
+    }
+  });
+});
+
+
+
+
+
 
 // Login
 app.post('/api/login', (req, res) => {
@@ -225,7 +285,7 @@ app.post('/api/login', (req, res) => {
       if (!isMatch) return res.status(401).json({ error: 'Contraseña incorrecta' });
 
       // Generate a token
-      const token = jwt.sign({ id: user.id, usuario: user.usuario, admin: user.administrador }, SECRET_KEY, { expiresIn: '1h' });
+      const token = jwt.sign({ id: user.id, usuario: user.usuario, admin: user.administrador }, SECRET_KEY, { expiresIn: '1hr' });
       res.json({ token, usuario: user.usuario });
     });
   });
