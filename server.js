@@ -1,14 +1,16 @@
 const express = require('express');
 const mysql = require('mysql2');
-require('dotenv').config();
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const multer = require('multer');
 const encryptC = require('bcrypt');
-const jwt = require('jsonwebtoken');
 
 const app = express();
-const port = process.env.PORT || 3000; // Cambia a PORT en Railway
+const port = 3000;
+const jwt = require('jsonwebtoken');
+
+// Replace 'your_secret_key' with a strong secret key
+const SECRET_KEY = 'LLAVE_SECRETA_USUARIOS';
 
 // Configuración de middleware
 app.use(cors());
@@ -19,7 +21,12 @@ const storage = multer.memoryStorage(); // Guarda archivos en memoria
 const upload = multer({ storage: storage });
 
 // Configuración de la base de datos
-const db = mysql.createConnection(process.env.MYSQL_PUBLIC_URL);
+const db = mysql.createConnection({
+  host: '127.0.0.1',
+  user: 'users',
+  password: 'users',
+  database: 'users'
+});
 
 db.connect(err => {
   if (err) {
@@ -29,19 +36,7 @@ db.connect(err => {
   console.log('Conectado a la base de datos MySQL');
 });
 
-// Ejemplo de ruta
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK' });
-});
-
-// Iniciar el servidor
-app.listen(port, () => {
-  console.log(`Servidor corriendo en http://localhost:${port}`);
-});
-
-
 // Rutas CRUD
-
 // Obtener todos los personajes
 app.get('/api/persons', (req, res) => {
   db.query('SELECT * FROM People', (err, results) => {
@@ -201,6 +196,12 @@ app.delete('/api/persons/:id', (req, res) => {
   });
 });
 
+// Iniciar el servidor
+app.listen(port, () => {
+  console.log(`Servidor escuchando en http://localhost:${port}`);
+});
+
+
 // Servir una imagen específica por ID
 app.get('/api/persons/image/:id', (req, res) => {
   const id = req.params.id;
@@ -286,6 +287,327 @@ app.post('/api/login', (req, res) => {
       const token = jwt.sign({ id: user.id, usuario: user.usuario, admin: user.administrador }, SECRET_KEY, { expiresIn: '1hr' });
       res.json({ token, usuario: user.usuario });
     });
+  });
+});
+
+// Hacer admin
+
+app.put('/api/persons/admin/:id', (req, res) => {
+  const id = req.params.id;
+
+  const query = 'UPDATE People SET administrador = true WHERE id = ?';
+  
+  db.query(query, [id], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ message: 'Persona no encontrada' });
+    }
+
+    res.json({ message: 'Administrador actualizado exitosamente', id });
+  });
+});
+
+
+
+// ------------------------------------------------------------------------ Solicitudes ---------------------------------------------------------------------------
+//todas la solis
+app.get('/api/solicitudes', (req, res) => {
+  db.query('SELECT * FROM SolicitudesAdm', (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(results);
+  });
+});
+ // solis pendientes
+app.get('/api/solicitudes/pendientes', (req, res) => {
+  db.query('SELECT * FROM SolicitudesAdm WHERE estadoSolicitud = "pendiente"', (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(results);
+  });
+});
+
+//solis aceptadas
+app.get('/api/solicitudes/aceptadas', (req, res) => {
+  db.query('SELECT * FROM SolicitudesAdm WHERE estadoSolicitud = "aceptado"', (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(results);
+  });
+});
+
+// solis rechazadas
+app.get('/api/solicitudes/rechazadas', (req, res) => {
+  db.query('SELECT * FROM SolicitudesAdm WHERE estadoSolicitud = "rechazado"', (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(results);
+  });
+});
+
+//mandar solis
+app.post('/api/solicitudes/:id', (req, res)=> {
+  const usuarioId = req.params.id;
+  const query = 'INSERT INTO SolicitudesAdm (idusuario, solicitudAdmin, estadoSolicitud) VALUES (?, ?, ?)';
+  
+  db.query(query, [usuarioId, true, 'pendiente'], (err, results)=>{
+    if(err){
+      return res.status(500).json({error: err.message, message: 'No se pueden hacer varias solicitudes el mismo día'});
+    }
+
+    if(results.affectedRows === 0){
+      return res.status(404).json({message: 'Usuario no encontrado'});
+    }
+
+    res.json({message: 'Solicitud agregada exitosamente'})
+  })
+})
+
+// Aceptar solicitudes
+app.put('/api/solicitudes/:id', (req, res) => {
+  const solicitudId = req.params.id;
+  const { idUsuarioResponsable } = req.body; // Asumimos que envías el ID del usuario responsable en el cuerpo
+
+  // Asegúrate de que se envíe el ID del usuario responsable
+  if (!idUsuarioResponsable) {
+    return res.status(400).json({ message: 'El ID del usuario responsable es requerido.' });
+  }
+
+  const query = 'UPDATE SolicitudesAdm SET estadoSolicitud = ?, idUsuarioResponsable = ?, fechaRespuesta = NOW() WHERE id = ?';
+
+  db.query(query, ['aceptado', idUsuarioResponsable, solicitudId], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ message: 'Solicitud no encontrada' });
+    }
+
+    res.json({ message: 'Solicitud actualizada exitosamente' });
+  });
+});
+
+
+//rechazar solis
+app.put('/api/rechazarsolicitudes/:id', (req, res) => {
+  const solicitudId = req.params.id;
+  const { idUsuarioResponsable } = req.body; // Asumimos que envías el ID del usuario responsable en el cuerpo
+
+  // Asegúrate de que se envíe el ID del usuario responsable
+  if (!idUsuarioResponsable) {
+    return res.status(400).json({ message: 'El ID del usuario responsable es requerido.' });
+  }
+
+  const query = 'UPDATE SolicitudesAdm SET estadoSolicitud = ?, idUsuarioResponsable = ?, fechaRespuesta = NOW() WHERE id = ?';
+
+  db.query(query, ['rechazado', idUsuarioResponsable, solicitudId], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ message: 'Solicitud no encontrada' });
+    }
+
+    res.json({ message: 'Solicitud actualizada exitosamente' });
+  });
+});
+
+// motivo rechazo
+app.post('/api/rechazosolicitudes', (req, res) => {
+  const { idSolicitud, motivoRechazo, idUsuarioResponsable } = req.body;
+
+  const query = 'INSERT INTO RechazoSolicitudes (idSolicitud, motivoRechazo, idUsuarioResponsable) VALUES (?, ?, ?)';
+
+  db.query(query, [idSolicitud, motivoRechazo, idUsuarioResponsable], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    res.status(201).json({ message: 'Motivo de rechazo registrado exitosamente', id: results.insertId });
+  });
+});
+
+app.get('/api/solicitudes/obtenerusuairo/:id', (req, res) => {
+  const idusuario = req.params.id;
+
+  // Consulta para obtener las solicitudes del usuario
+  const query = 'SELECT * FROM SolicitudesAdm WHERE idusuario = ?';
+
+  db.query(query, [idusuario], (error, results) => {
+    if (error) {
+      console.error('Error al obtener las solicitudes:', error);
+      return res.status(500).json({ message: 'Error en el servidor' });
+    }
+
+    // Devuelve las solicitudes al cliente
+    return res.status(200).json(results);
+  });
+});
+
+// ----------------------------------- Otros tipos de solicitudes -------------------------------------------------------
+
+app.post('/api/solicitudes/otras/:id', (req, res) => {
+  const idusuario = req.params.id;
+  const { asunto, descripcion } = req.body;
+
+  if (!asunto || !descripcion) {
+    return res.status(400).json({ message: 'Asunto y descripción son requeridos.' });
+  }
+
+  const query = 'INSERT INTO SolicitudesInfo (idUsuario, asunto, descripcion) VALUES (?, ?, ?)';
+
+  db.query(query, [idusuario, asunto, descripcion], (error, results) => {
+    if (error) {
+      console.error('Error al realizar una solicitud', error);
+      return res.status(500).json({ message: 'Error con el servidor' });
+    }
+
+    return res.status(200).json({ message: 'Solicitud creada exitosamente', solicitudId: results.insertId });
+  });
+});
+
+
+// Ruta para que el Administrador responda a una solicitud
+app.post('/api/solicitudes/respuestas/admin/:idSolicitud', upload.single('archivo'), (req, res) => {
+  const idSolicitud = req.params.idSolicitud;
+  const { idRemitente, mensaje } = req.body; // Obtener idRemitente desde el cuerpo de la solicitud
+  const archivo = req.file ? req.file.buffer : null;
+  const tipoArchivo = req.file ? req.file.mimetype : null;
+
+  // Insertar la respuesta en la tabla RespuestasSolicitudes
+  const queryRespuesta = 'INSERT INTO RespuestasSolicitudes (idSolicitud, idRemitente, mensaje, archivo, tipoArchivo) VALUES (?, ?, ?, ?, ?)';
+  db.query(queryRespuesta, [idSolicitud, idRemitente, mensaje, archivo, tipoArchivo], (err) => {
+    if (err) {
+      return res.status(500).json({ message: 'Error al insertar la respuesta del administrador', error: err });
+    }
+
+    // Actualizar el estado de la solicitud a respondida por el Admin
+    const queryActualizarEstado = 'UPDATE SolicitudesInfo SET estadoSolicitudAdmin = "respondidaAdmin", idUsuarioResponsable = ?, fechaRespuesta = NOW() WHERE id = ?';
+    db.query(queryActualizarEstado, [idRemitente, idSolicitud], (error) => {
+      if (error) {
+        return res.status(500).json({ message: 'Error al actualizar el estado de la solicitud', error });
+      }
+
+      return res.status(200).json({ message: 'Respuesta del administrador enviada y estado actualizado' });
+    });
+  });
+});
+
+// Ruta para que el Usuario responda a una solicitud
+app.post('/api/solicitudes/respuestas/usuario/:idSolicitud', upload.single('archivo'), (req, res) => {
+  const idSolicitud = req.params.idSolicitud;
+  const { idRemitente, mensaje } = req.body; // Obtener idRemitente desde el cuerpo de la solicitud
+  const archivo = req.file ? req.file.buffer : null;
+  const tipoArchivo = req.file ? req.file.mimetype : null;
+
+  // Insertar la respuesta en la tabla RespuestasSolicitudes
+  const queryRespuesta = 'INSERT INTO RespuestasSolicitudes (idSolicitud, idRemitente, mensaje, archivo, tipoArchivo) VALUES (?, ?, ?, ?, ?)';
+  db.query(queryRespuesta, [idSolicitud, idRemitente, mensaje, archivo, tipoArchivo], (err) => {
+    if (err) {
+      return res.status(500).json({ message: 'Error al insertar la respuesta del usuario', error: err });
+    }
+
+    // Actualizar el estado de la solicitud a respondida por el Usuario
+    const queryActualizarEstado = 'UPDATE SolicitudesInfo SET estadoSolicitudUser = "respondidaUser", fechaRespuesta = NOW() WHERE id = ?';
+    db.query(queryActualizarEstado, [idSolicitud], (error) => {
+      if (error) {
+        return res.status(500).json({ message: 'Error al actualizar el estado de la solicitud', error });
+      }
+
+      return res.status(200).json({ message: 'Respuesta del usuario enviada y estado actualizado' });
+    });
+  });
+});
+
+
+// Ruta para obtener todas las solicitudes con sus respuestas
+app.get('/api/solicitudesOtras', (req, res) => {
+  const querySolicitudes = `
+    SELECT 
+  s.id, 
+  s.asunto, 
+  s.descripcion, 
+  s.estadoSolicitudAdmin, 
+  s.estadoSolicitudUser,
+  rAdmin.id AS idRespuestaAdmin,          -- Obtener el id de la respuesta del administrador
+  rAdmin.mensaje AS respuestaAdmin, 
+  rAdmin.archivo AS archivoAdmin, 
+  rUsuario.id AS idRespuestaUsuario,       -- Obtener el id de la respuesta del usuario
+  rUsuario.mensaje AS respuestaUsuario, 
+  rUsuario.archivo AS archivoUsuario
+FROM SolicitudesInfo s
+LEFT JOIN RespuestasSolicitudes rAdmin 
+  ON s.id = rAdmin.idSolicitud 
+  AND rAdmin.idRemitente IN (SELECT id FROM People WHERE administrador = 1)
+LEFT JOIN RespuestasSolicitudes rUsuario 
+  ON s.id = rUsuario.idSolicitud 
+  AND rUsuario.idRemitente NOT IN (SELECT id FROM People WHERE administrador = 1)
+ORDER BY s.fechaSolicitud DESC`; // Ordenar por fecha de solicitud (opcional)
+
+  db.query(querySolicitudes, (err, results) => {
+    if (err) {
+      return res.status(500).json({ message: 'Error al obtener las solicitudes', error: err });
+    }
+    return res.status(200).json(results);
+  });
+});
+
+app.get('/api/solicitudes/usuario/:idUsuario', (req, res) => {
+  const idUsuario = req.params.idUsuario;
+
+  const querySolicitudes = `
+    SELECT s.*, 
+        rAdmin.id AS idRespuestaAdmin, 
+        rAdmin.mensaje AS respuestaAdmin, 
+        rAdmin.archivo AS archivoAdmin,
+        rUsuario.id AS idRespuestaUsuario, 
+        rUsuario.mensaje AS respuestaUsuario, 
+        rUsuario.archivo AS archivoUsuario
+  FROM SolicitudesInfo s
+  LEFT JOIN RespuestasSolicitudes rAdmin 
+        ON s.id = rAdmin.idSolicitud 
+        AND rAdmin.idRemitente IN (SELECT id FROM People WHERE administrador = 1)
+  LEFT JOIN RespuestasSolicitudes rUsuario 
+        ON s.id = rUsuario.idSolicitud 
+        AND rUsuario.idRemitente = ?
+  WHERE s.idUsuario = ?
+  ORDER BY s.fechaSolicitud DESC;`;
+
+  db.query(querySolicitudes, [idUsuario, idUsuario], (err, results) => {
+    if (err) {
+      console.error('Error al obtener las solicitudes:', err);
+      return res.status(500).json({ message: 'Error al obtener las solicitudes' });
+    }
+    return res.status(200).json(results);
+  });
+});
+
+
+// Ruta para obtener el archivo de una respuesta
+app.get('/api/solicitudes/archivo/:idRespuesta', (req, res) => {
+  const idRespuesta = req.params.idRespuesta;
+
+  const query = 'SELECT archivo, tipoArchivo FROM RespuestasSolicitudes WHERE id = ?';
+  db.query(query, [idRespuesta], (err, results) => {
+    if (err) {
+      return res.status(500).json({ message: 'Error al obtener el archivo' });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Archivo no encontrado' });
+    }
+
+    const { archivo, tipoArchivo } = results[0];
+    res.setHeader('Content-Type', tipoArchivo);
+    res.send(archivo); // Enviar el archivo BLOB
   });
 });
 
