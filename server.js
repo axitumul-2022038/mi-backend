@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const multer = require('multer');
 const encryptC = require('bcrypt');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const port = 3000;
@@ -28,6 +29,7 @@ const db = mysql.createConnection({
   database: 'users'
 });
 
+// Conexión a la base de datos
 db.connect(err => {
   if (err) {
     console.error('Error conectando a la base de datos:', err);
@@ -36,7 +38,33 @@ db.connect(err => {
   console.log('Conectado a la base de datos MySQL');
 });
 
-// Rutas CRUD
+// Configuración del transportador de correo
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'contactodeusuarios@gmail.com', // Correo desde el que se enviará
+    pass: 'Contacto2024',       // Contraseña de la cuenta
+  },
+});
+
+// Ruta para enviar correo
+app.post('/api/send-email', (req, res) => {
+  const userEmail = req.body.email;
+  const mailOptions = {
+    from: 'contactodeusuarios@gmail.com',
+    to: userEmail,  // Correo al que se enviará
+    subject: 'Gracias por contactarnos',
+    text: 'Nos pondremos en contacto contigo en breve.',
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      return res.status(500).send({ message: 'Error al enviar el correo', error: error });
+    }
+    res.status(200).send({ message: 'Correo enviado con éxito' });
+  });
+});
+
 // Obtener todos los personajes
 app.get('/api/persons', (req, res) => {
   db.query('SELECT * FROM People', (err, results) => {
@@ -74,7 +102,8 @@ app.post('/api/persons', upload.single('imagen'), (req, res) => {
     const administrador = false;
     const imagen = req.file ? req.file.buffer : null;
 
-    db.query('INSERT INTO People (nombre, usuario, imagenUrl, contrasenia, administrador) VALUES (?, ?, ?, ?, ?)', 
+    db.query(
+      'INSERT INTO People (nombre, usuario, imagenUrl, contrasenia, administrador) VALUES (?, ?, ?, ?, ?)', 
       [nombre, usuario, imagen, hashedPassword, administrador], 
       (err, results) => {
         if (err) {
@@ -436,11 +465,23 @@ app.post('/api/rechazosolicitudes', (req, res) => {
   });
 });
 
-app.get('/api/solicitudes/obtenerusuairo/:id', (req, res) => {
+app.get('/api/solicitudes/obtenerusuario/:id', (req, res) => {
   const idusuario = req.params.id;
 
-  // Consulta para obtener las solicitudes del usuario
-  const query = 'SELECT * FROM SolicitudesAdm WHERE idusuario = ?';
+  // Consulta para obtener las solicitudes del usuario junto con el motivo de rechazo
+  const query = `
+    SELECT 
+      s.*, 
+      r.motivoRechazo 
+    FROM 
+      SolicitudesAdm s 
+    LEFT JOIN 
+      RechazoSolicitudes r 
+    ON 
+      s.id = r.idSolicitud 
+    WHERE 
+      s.idusuario = ?
+  `;
 
   db.query(query, [idusuario], (error, results) => {
     if (error) {
@@ -452,6 +493,7 @@ app.get('/api/solicitudes/obtenerusuairo/:id', (req, res) => {
     return res.status(200).json(results);
   });
 });
+
 
 // ----------------------------------- Otros tipos de solicitudes -------------------------------------------------------
 
@@ -611,3 +653,36 @@ app.get('/api/solicitudes/archivo/:idRespuesta', (req, res) => {
   });
 });
 
+app.get('/api/solicitudes/:id', (req, res) => {
+  const idSolicitud = req.params.id;
+
+  const querySolicitud = `
+    SELECT s.*, 
+        rAdmin.id AS idRespuestaAdmin, 
+        rAdmin.mensaje AS respuestaAdmin, 
+        rAdmin.archivo AS archivoAdmin,
+        rUsuario.id AS idRespuestaUsuario, 
+        rUsuario.mensaje AS respuestaUsuario, 
+        rUsuario.archivo AS archivoUsuario
+    FROM SolicitudesInfo s
+    LEFT JOIN RespuestasSolicitudes rAdmin 
+        ON s.id = rAdmin.idSolicitud 
+        AND rAdmin.idRemitente IN (SELECT id FROM People WHERE administrador = 1)
+    LEFT JOIN RespuestasSolicitudes rUsuario 
+        ON s.id = rUsuario.idSolicitud 
+        AND rUsuario.idRemitente NOT IN (SELECT id FROM People WHERE administrador = 1)
+    WHERE s.id = ?;`;
+
+  db.query(querySolicitud, [idSolicitud], (err, results) => {
+    if (err) {
+      console.error('Error al obtener la solicitud:', err);
+      return res.status(500).json({ message: 'Error al obtener la solicitud' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Solicitud no encontrada' });
+    }
+    
+    return res.status(200).json(results[0]); // Devuelve solo una solicitud
+  });
+});
